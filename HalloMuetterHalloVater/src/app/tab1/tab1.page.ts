@@ -1,8 +1,24 @@
 import { Component } from '@angular/core';
-import { IonHeader, IonToolbar, IonTitle, IonContent, IonButton } from '@ionic/angular/standalone';
+import {
+  IonHeader,
+  IonToolbar,
+  IonTitle,
+  IonContent,
+  IonButton,
+} from '@ionic/angular/standalone';
 import { ExploreContainerComponent } from '../explore-container/explore-container.component';
 import { Geolocation } from '@capacitor/geolocation';
-import { Map, latLng, tileLayer, Layer, marker, icon, Polyline, polyline } from 'leaflet';
+import {
+  Map,
+  latLng,
+  tileLayer,
+  Layer,
+  marker,
+  icon,
+  Polyline,
+  polyline,
+} from 'leaflet';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 @Component({
   selector: 'app-tab1',
@@ -22,6 +38,7 @@ export class Tab1Page {
   private trajectory: Polyline | undefined;
   private trajectoryPoints: any[] = [];
   private watchID: any;
+  lastTrackFileName: string | null = null;
 
   constructor() {}
 
@@ -51,6 +68,7 @@ export class Tab1Page {
   ionViewDidEnter() {
     this.leafletMap();
   }
+
   leafletMap() {
     // In setView add latLng and zoom
     this.map = new Map('mapId').setView([47.535023, 7.642173], 15);
@@ -61,6 +79,7 @@ export class Tab1Page {
       }
     ).addTo(this.map);
   }
+
   /* Remove map when we have multiple map object */
   ionViewWillLeave() {
     if (this.map) {
@@ -72,11 +91,12 @@ export class Tab1Page {
     Geolocation.clearWatch(this.watchID);
     this.clearTrajectory();
   }
+
   clearTrajectory() {
     if (this.map && this.trajectory) {
       this.map.removeLayer(this.trajectory);
-      this.trajectoryPoints = [];
     }
+    this.trajectoryPoints = [];
   }
 
   watchPosition() {
@@ -84,6 +104,11 @@ export class Tab1Page {
     this.watchID = Geolocation.watchPosition(
       { enableHighAccuracy: true, timeout: 5000, maximumAge: Infinity },
       (position, err) => {
+        if (err) {
+          console.error('Watch position error:', err);
+          return;
+        }
+
         if (this.map && position) {
           const lat = position.coords.latitude;
           const long = position.coords.longitude;
@@ -96,4 +121,70 @@ export class Tab1Page {
       }
     );
   }
+
+async saveTrackToFile(): Promise<void> {
+    if (!this.trajectoryPoints.length) {
+      console.log('No trajectory points to save.');
+      return;
+    }
+
+    const header = 'lat,lon\n';
+    const body = this.trajectoryPoints
+      .map(([lat, lon]) => `${lat},${lon}`)
+      .join('\n');
+
+    const data = header + body;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `track-${timestamp}.csv`;
+
+    try {
+      const result = await Filesystem.writeFile({
+        path: fileName,
+        data,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+
+      // WICHTIG: hier merken wir uns den Namen
+      this.lastTrackFileName = fileName;
+
+      console.log('Track saved to file:', result.uri ?? fileName);
+    } catch (error) {
+      console.error('Error saving track file:', error);
+    }
+  }
+
+  async downloadTrack(): Promise<void> {
+    if (!this.lastTrackFileName) {
+      console.log('No track file saved yet.');
+      return;
+    }
+
+    try {
+      const result = await Filesystem.readFile({
+        path: this.lastTrackFileName,
+        directory: Directory.Documents,
+      });
+
+      // result.data ist für Web meist ein String (Base64 oder Text je nach Implementierung)
+      // du sagst, dein aktueller Download funktioniert – also lassen wir die Logik, wie du sie hattest:
+      const blob = new Blob([result.data], {
+        type: 'text/csv;charset=utf-8;',
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = this.lastTrackFileName;
+      a.click();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading track file:', error);
+    }
+  }
 }
+
+
+
