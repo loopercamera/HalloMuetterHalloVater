@@ -20,6 +20,13 @@ import {
 } from 'leaflet';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
+interface TrajectoryPoint {
+  userId: string;
+  time: string; // ISO timestamp
+  lat: number;
+  lon: number;
+}
+
 @Component({
   selector: 'app-tab1',
   templateUrl: 'tab1.page.html',
@@ -34,10 +41,14 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
   ],
 })
 export class Tab1Page {
-  private map: Map | undefined;
-  private trajectory: Polyline | undefined;
-  private trajectoryPoints: any[] = [];
-  private watchID: any;
+  private map?: Map;
+  private trajectory?: Polyline;
+  private watchId: string | null = null;
+
+  private readonly USER_ID = 'USER_001'; // hardcoded for now
+  private trajectoryPoints: TrajectoryPoint[] = [];
+
+  // für den Download der letzten Datei
   lastTrackFileName: string | null = null;
 
   constructor() {}
@@ -84,11 +95,15 @@ export class Tab1Page {
   ionViewWillLeave() {
     if (this.map) {
       this.map.remove();
+      this.map = undefined;
     }
   }
 
-  stopWatchPosition() {
-    Geolocation.clearWatch(this.watchID);
+  async stopWatchPosition(): Promise<void> {
+    if (this.watchId) {
+      await Geolocation.clearWatch({ id: this.watchId });
+      this.watchId = null;
+    }
     this.clearTrajectory();
   }
 
@@ -96,12 +111,14 @@ export class Tab1Page {
     if (this.map && this.trajectory) {
       this.map.removeLayer(this.trajectory);
     }
+    this.trajectory = undefined;
     this.trajectoryPoints = [];
   }
 
-  watchPosition() {
+  async watchPosition(): Promise<void> {
     this.clearTrajectory();
-    this.watchID = Geolocation.watchPosition(
+
+    this.watchId = await Geolocation.watchPosition(
       { enableHighAccuracy: true, timeout: 5000, maximumAge: Infinity },
       (position, err) => {
         if (err) {
@@ -109,28 +126,52 @@ export class Tab1Page {
           return;
         }
 
-        if (this.map && position) {
-          const lat = position.coords.latitude;
-          const long = position.coords.longitude;
-          this.trajectoryPoints.push([lat, long]);
-          if (this.trajectory) {
-            this.map.removeLayer(this.trajectory);
-          }
-          this.trajectory = polyline(this.trajectoryPoints).addTo(this.map);
+        if (!this.map || !position) {
+          return;
         }
+
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        // Zeitstempel: entweder aus position.timestamp oder jetzt
+        const timestamp =
+          position.timestamp != null
+            ? new Date(position.timestamp).toISOString()
+            : new Date().toISOString();
+
+        // Speichere kompletten Datensatz
+        const point: TrajectoryPoint = {
+          userId: this.USER_ID,
+          time: timestamp,
+          lat,
+          lon: lng,
+        };
+
+        this.trajectoryPoints.push(point);
+
+        // Leaflet braucht weiter nur [lat, lon]
+        const latLngs = this.trajectoryPoints.map(
+          (p) => [p.lat, p.lon] as [number, number]
+        );
+
+        if (this.trajectory) {
+          this.map.removeLayer(this.trajectory);
+        }
+
+        this.trajectory = polyline(latLngs).addTo(this.map);
       }
     );
   }
 
-async saveTrackToFile(): Promise<void> {
+  async saveTrackToFile(): Promise<void> {
     if (!this.trajectoryPoints.length) {
       console.log('No trajectory points to save.');
       return;
     }
 
-    const header = 'lat,lon\n';
+    const header = 'User_id,Time,Lat,Lon\n';
     const body = this.trajectoryPoints
-      .map(([lat, lon]) => `${lat},${lon}`)
+      .map((p) => `${p.userId},${p.time},${p.lat},${p.lon}`)
       .join('\n');
 
     const data = header + body;
@@ -146,7 +187,6 @@ async saveTrackToFile(): Promise<void> {
         encoding: Encoding.UTF8,
       });
 
-      // WICHTIG: hier merken wir uns den Namen
       this.lastTrackFileName = fileName;
 
       console.log('Track saved to file:', result.uri ?? fileName);
@@ -167,8 +207,6 @@ async saveTrackToFile(): Promise<void> {
         directory: Directory.Documents,
       });
 
-      // result.data ist für Web meist ein String (Base64 oder Text je nach Implementierung)
-      // du sagst, dein aktueller Download funktioniert – also lassen wir die Logik, wie du sie hattest:
       const blob = new Blob([result.data], {
         type: 'text/csv;charset=utf-8;',
       });
@@ -185,6 +223,3 @@ async saveTrackToFile(): Promise<void> {
     }
   }
 }
-
-
-
