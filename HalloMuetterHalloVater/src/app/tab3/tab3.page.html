@@ -13,5 +13,50 @@
     </ion-toolbar>
   </ion-header>
 
-  <app-explore-container name="Tab 3 page"></app-explore-container>
+  <!-- eigene Position holen -->
+  <ion-button
+    expand="block"
+    fill="outline"
+    (click)="getMyLocation()"
+  >
+    Get My Location
+  </ion-button>
+
+  <div style="padding: 12px;">
+    <p *ngIf="myLat != null">
+      Your position:<br />
+      Lat: {{ myLat | number:'1.6-6' }}<br />
+      Lon: {{ myLon | number:'1.6-6' }}
+    </p>
+  </div>
+
+  <!-- CSV hochladen -->
+  <div style="padding: 12px;">
+    <label for="fileInput">Upload track CSV</label><br />
+    <input
+      id="fileInput"
+      type="file"
+      accept=".csv,text/csv"
+      (change)="onFileSelected($event)"
+    />
+
+    <p *ngIf="targetLat != null">
+      Target from file:<br />
+      Lat: {{ targetLat | number:'1.6-6' }}<br />
+      Lon: {{ targetLon | number:'1.6-6' }}
+    </p>
+  </div>
+
+  <!-- Ergebnis: Distanz & Richtung -->
+  <div
+    style="padding: 12px;"
+    *ngIf="distanceKm != null && bearingDeg != null"
+  >
+    <p>
+      Distance: {{ distanceKm | number:'1.2-2' }} km
+    </p>
+    <p>
+      Direction: {{ bearingDeg | number:'1.0-0' }}° ({{ bearingText }})
+    </p>
+  </div>
 </ion-content>
