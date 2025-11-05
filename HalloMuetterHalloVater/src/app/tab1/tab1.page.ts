@@ -48,7 +48,7 @@ export class Tab1Page {
   private readonly USER_ID = 'USER_001'; // hardcoded for now
   private trajectoryPoints: TrajectoryPoint[] = [];
 
-  // für den Download der letzten Datei
+  // for download button
   lastTrackFileName: string | null = null;
 
   constructor() {}
@@ -57,23 +57,27 @@ export class Tab1Page {
     const coordinates = await Geolocation.getCurrentPosition();
     console.log('Current position: ', coordinates);
 
-    if (this.map) {
-      const myIcon = icon({
-        iconUrl: 'leaflet/marker-icon.png',
-        shadowUrl: 'leaflet/marker-shadow.png',
-        iconAnchor: [12, 41], // point of the icon which will correspond to marker's location
-        popupAnchor: [0, -41], // point from which the popup should open relative to the iconAnchor
-      });
-      marker([coordinates.coords.latitude, coordinates.coords.longitude], {
-        icon: myIcon,
-      })
-        .addTo(this.map)
-        .bindPopup('You are here')
-        .openPopup();
-      this.map.panTo(
-        latLng(coordinates.coords.latitude, coordinates.coords.longitude)
-      );
+    if (!this.map) {
+      return;
     }
+
+    const myIcon = icon({
+      iconUrl: 'leaflet/marker-icon.png',
+      shadowUrl: 'leaflet/marker-shadow.png',
+      iconAnchor: [12, 41],
+      popupAnchor: [0, -41],
+    });
+
+    marker([coordinates.coords.latitude, coordinates.coords.longitude], {
+      icon: myIcon,
+    })
+      .addTo(this.map)
+      .bindPopup('You are here')
+      .openPopup();
+
+    this.map.panTo(
+      latLng(coordinates.coords.latitude, coordinates.coords.longitude)
+    );
   }
 
   ionViewDidEnter() {
@@ -113,10 +117,12 @@ export class Tab1Page {
     }
     this.trajectory = undefined;
     this.trajectoryPoints = [];
+    console.log('Trajectory cleared, points length:', this.trajectoryPoints.length);
   }
 
   async watchPosition(): Promise<void> {
     this.clearTrajectory();
+    console.log('Starting watchPosition()');
 
     this.watchId = await Geolocation.watchPosition(
       { enableHighAccuracy: true, timeout: 5000, maximumAge: Infinity },
@@ -126,20 +132,19 @@ export class Tab1Page {
           return;
         }
 
-        if (!this.map || !position) {
+        if (!position) {
+          console.warn('Watch callback without position');
           return;
         }
 
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
 
-        // Zeitstempel: entweder aus position.timestamp oder jetzt
         const timestamp =
           position.timestamp != null
             ? new Date(position.timestamp).toISOString()
             : new Date().toISOString();
 
-        // Speichere kompletten Datensatz
         const point: TrajectoryPoint = {
           userId: this.USER_ID,
           time: timestamp,
@@ -147,9 +152,20 @@ export class Tab1Page {
           lon: lng,
         };
 
+        // ALWAYS store the point, even if map is undefined
         this.trajectoryPoints.push(point);
+        console.log(
+          'New trajectory point:',
+          point,
+          'Total points:',
+          this.trajectoryPoints.length
+        );
 
-        // Leaflet braucht weiter nur [lat, lon]
+        // Only deal with map drawing if we actually have a map
+        if (!this.map) {
+          return;
+        }
+
         const latLngs = this.trajectoryPoints.map(
           (p) => [p.lat, p.lon] as [number, number]
         );
@@ -164,6 +180,11 @@ export class Tab1Page {
   }
 
   async saveTrackToFile(): Promise<void> {
+    console.log(
+      'saveTrackToFile called, points length:',
+      this.trajectoryPoints.length
+    );
+
     if (!this.trajectoryPoints.length) {
       console.log('No trajectory points to save.');
       return;
@@ -189,7 +210,12 @@ export class Tab1Page {
 
       this.lastTrackFileName = fileName;
 
-      console.log('Track saved to file:', result.uri ?? fileName);
+      console.log(
+        'Track saved to file:',
+        result.uri ?? fileName,
+        'points saved:',
+        this.trajectoryPoints.length
+      );
     } catch (error) {
       console.error('Error saving track file:', error);
     }
@@ -218,6 +244,7 @@ export class Tab1Page {
       a.click();
 
       URL.revokeObjectURL(url);
+      console.log('Track downloaded:', this.lastTrackFileName);
     } catch (error) {
       console.error('Error downloading track file:', error);
     }
