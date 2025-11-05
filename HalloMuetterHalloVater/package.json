@@ -14,7 +14,7 @@
   "private": true,
   "dependencies": {
     "@angular/animations": "^20.0.0",
-    "@angular/common": "^20.0.0",
+    "@angular/common": "^20.3.9",
     "@angular/compiler": "^20.0.0",
     "@angular/core": "^20.0.0",
     "@angular/forms": "^20.0.0",
@@ -31,7 +31,7 @@
     "@capacitor/keyboard": "7.0.3",
     "@capacitor/preferences": "^7.0.2",
     "@capacitor/status-bar": "7.0.3",
-    "@ionic/angular": "^8.0.0",
+    "@ionic/angular": "^8.7.8",
     "ionicons": "^7.0.0",
     "leaflet": "^1.9.4",
     "rxjs": "~7.8.0",
