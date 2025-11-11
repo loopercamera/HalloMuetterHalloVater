@@ -60,8 +60,9 @@ npm install @angular/common@latest
 ionic cap sync
 ```
 
+## Set up Backend with PostGIS
 
-## Open PGAdmin
+### Open PGAdmin
 
 Create new database `hallo_muetter_hallo_vater`
 
@@ -77,7 +78,7 @@ CREATE TABLE user_positions (
   created_at TIMESTAMP DEFAULT now()
 );
 ```
-Install server dependencies:
+### Install server dependencies:
 
 ```bash
 cd Server
@@ -89,6 +90,10 @@ npm init -y
 
 ```bash
 npm install express pg cors body-parser dotenv
+```
+
+``` bash
+npm install --save-dev nodemon
 ```
 
 Start server with:
