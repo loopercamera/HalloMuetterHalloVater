@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import {
   IonHeader,
   IonToolbar,
@@ -6,23 +7,20 @@ import {
   IonContent,
   IonButton,
 } from '@ionic/angular/standalone';
-import { ExploreContainerComponent } from '../explore-container/explore-container.component';
 import { Geolocation } from '@capacitor/geolocation';
 import {
   Map,
   latLng,
   tileLayer,
-  Layer,
   marker,
   icon,
   Polyline,
   polyline,
 } from 'leaflet';
-import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
-interface TrajectoryPoint {
+interface TrackPoint {
   userId: string;
-  time: string; // ISO timestamp
+  timestamp: string; // ISO string
   lat: number;
   lon: number;
 }
@@ -31,222 +29,187 @@ interface TrajectoryPoint {
   selector: 'app-tab1',
   templateUrl: 'tab1.page.html',
   styleUrls: ['tab1.page.scss'],
+  standalone: true,
   imports: [
-    IonButton,
+    CommonModule,
     IonHeader,
     IonToolbar,
     IonTitle,
     IonContent,
-    ExploreContainerComponent,
+    IonButton,
   ],
 })
 export class Tab1Page {
-  private map?: Map;
-  private trajectory?: Polyline;
-  private watchId: string | null = null;
+  private map: Map | undefined;
+  private trajectory: Polyline | undefined;
+  private watchID: string | null = null;
 
-  private readonly USER_ID = 'USER_001'; // hardcoded for now
-  private trajectoryPoints: TrajectoryPoint[] = [];
+  private readonly USER_ID = 'user_001';
 
-  // for download button
-  lastTrackFileName: string | null = null;
+  // must be public for template binding
+  trackPoints: TrackPoint[] = [];
+  isUploading: boolean = false;
 
   constructor() {}
-
-  async getCurrentPosition() {
-    const coordinates = await Geolocation.getCurrentPosition();
-    console.log('Current position: ', coordinates);
-
-    if (!this.map) {
-      return;
-    }
-
-    const myIcon = icon({
-      iconUrl: 'leaflet/marker-icon.png',
-      shadowUrl: 'leaflet/marker-shadow.png',
-      iconAnchor: [12, 41],
-      popupAnchor: [0, -41],
-    });
-
-    marker([coordinates.coords.latitude, coordinates.coords.longitude], {
-      icon: myIcon,
-    })
-      .addTo(this.map)
-      .bindPopup('You are here')
-      .openPopup();
-
-    this.map.panTo(
-      latLng(coordinates.coords.latitude, coordinates.coords.longitude)
-    );
-  }
 
   ionViewDidEnter() {
     this.leafletMap();
   }
 
-  leafletMap() {
-    // In setView add latLng and zoom
-    this.map = new Map('mapId').setView([47.535023, 7.642173], 15);
-    tileLayer(
-      'http://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'edupala.com © ionic LeafLet',
-      }
-    ).addTo(this.map);
-  }
-
-  /* Remove map when we have multiple map object */
   ionViewWillLeave() {
     if (this.map) {
       this.map.remove();
       this.map = undefined;
     }
-  }
-
-  async stopWatchPosition(): Promise<void> {
-    if (this.watchId) {
-      await Geolocation.clearWatch({ id: this.watchId });
-      this.watchId = null;
+    if (this.watchID) {
+      Geolocation.clearWatch({ id: this.watchID });
+      this.watchID = null;
     }
-    this.clearTrajectory();
   }
 
-  clearTrajectory() {
-    if (this.map && this.trajectory) {
-      this.map.removeLayer(this.trajectory);
+  // --- map setup ---
+
+  private leafletMap() {
+    if (this.map) {
+      return;
     }
-    this.trajectory = undefined;
-    this.trajectoryPoints = [];
-    console.log('Trajectory cleared, points length:', this.trajectoryPoints.length);
+
+    this.map = new Map('mapId').setView([47.535023, 7.642173], 15);
+
+    tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(this.map);
   }
 
-  async watchPosition(): Promise<void> {
-    this.clearTrajectory();
-    console.log('Starting watchPosition()');
+  // --- one-time current position marker ---
 
-    this.watchId = await Geolocation.watchPosition(
+  async getCurrentPosition() {
+    const coordinates = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+    });
+    console.log('Current position: ', coordinates);
+
+    if (this.map) {
+      const myIcon = icon({
+        iconUrl: 'leaflet/marker-icon.png',
+        shadowUrl: 'leaflet/marker-shadow.png',
+        iconAnchor: [12, 41],
+        popupAnchor: [0, -41],
+      });
+
+      marker([coordinates.coords.latitude, coordinates.coords.longitude], {
+        icon: myIcon,
+      })
+        .addTo(this.map)
+        .bindPopup('You are here')
+        .openPopup();
+
+      this.map.panTo(
+        latLng(coordinates.coords.latitude, coordinates.coords.longitude)
+      );
+    }
+  }
+
+  // --- tracking ---
+
+  watchPosition() {
+    this.clearTrajectory();
+
+    this.watchID = Geolocation.watchPosition(
       { enableHighAccuracy: true, timeout: 5000, maximumAge: Infinity },
       (position, err) => {
         if (err) {
-          console.error('Watch position error:', err);
+          console.error('Geolocation watch error:', err);
           return;
         }
+        if (this.map && position) {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
 
-        if (!position) {
-          console.warn('Watch callback without position');
-          return;
+          const tp: TrackPoint = {
+            userId: this.USER_ID,
+            timestamp: new Date().toISOString(),
+            lat,
+            lon,
+          };
+          this.trackPoints.push(tp);
+
+          const latlngs = this.trackPoints.map((p) => [p.lat, p.lon]) as [
+            number,
+            number
+          ][];
+
+          if (this.trajectory) {
+            this.map.removeLayer(this.trajectory);
+          }
+          this.trajectory = polyline(latlngs).addTo(this.map);
+
+          this.map.panTo(latLng(lat, lon));
         }
-
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-
-        const timestamp =
-          position.timestamp != null
-            ? new Date(position.timestamp).toISOString()
-            : new Date().toISOString();
-
-        const point: TrajectoryPoint = {
-          userId: this.USER_ID,
-          time: timestamp,
-          lat,
-          lon: lng,
-        };
-
-        // ALWAYS store the point, even if map is undefined
-        this.trajectoryPoints.push(point);
-        console.log(
-          'New trajectory point:',
-          point,
-          'Total points:',
-          this.trajectoryPoints.length
-        );
-
-        // Only deal with map drawing if we actually have a map
-        if (!this.map) {
-          return;
-        }
-
-        const latLngs = this.trajectoryPoints.map(
-          (p) => [p.lat, p.lon] as [number, number]
-        );
-
-        if (this.trajectory) {
-          this.map.removeLayer(this.trajectory);
-        }
-
-        this.trajectory = polyline(latLngs).addTo(this.map);
       }
-    );
+    ) as unknown as string; // Capacitor returns string id
   }
 
-  async saveTrackToFile(): Promise<void> {
-    console.log(
-      'saveTrackToFile called, points length:',
-      this.trajectoryPoints.length
-    );
+  stopWatchPosition() {
+    if (this.watchID) {
+      Geolocation.clearWatch({ id: this.watchID });
+      this.watchID = null;
+    }
+    this.clearTrajectory();
+  }
 
-    if (!this.trajectoryPoints.length) {
-      console.log('No trajectory points to save.');
+  private clearTrajectory() {
+    if (this.map && this.trajectory) {
+      this.map.removeLayer(this.trajectory);
+      this.trajectory = undefined;
+    }
+    this.trackPoints = [];
+  }
+
+  // --- upload to DB via API ---
+
+  async uploadTrackToDb() {
+    if (this.trackPoints.length === 0) {
+      console.warn('No trajectory points to upload.');
       return;
     }
 
-    const header = 'User_id,Time,Lat,Lon\n';
-    const body = this.trajectoryPoints
-      .map((p) => `${p.userId},${p.time},${p.lat},${p.lon}`)
-      .join('\n');
+    this.isUploading = true;
 
-    const data = header + body;
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `track-${timestamp}.csv`;
+    const url =
+      'https://fastapihmhv-production.up.railway.app/api/coordinates';
 
     try {
-      const result = await Filesystem.writeFile({
-        path: fileName,
-        data,
-        directory: Directory.Documents,
-        encoding: Encoding.UTF8,
-      });
+      for (const p of this.trackPoints) {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            lat: p.lat,
+            lon: p.lon,
+          }),
+        });
 
-      this.lastTrackFileName = fileName;
+        if (!resp.ok) {
+          console.error(
+            'Upload failed for point',
+            p,
+            'status',
+            resp.status
+          );
+        }
+      }
 
-      console.log(
-        'Track saved to file:',
-        result.uri ?? fileName,
-        'points saved:',
-        this.trajectoryPoints.length
+      console.log('Track upload finished.');
+    } catch (err) {
+      console.error(
+        'Error uploading track to DB (likely CORS in browser):',
+        err
       );
-    } catch (error) {
-      console.error('Error saving track file:', error);
-    }
-  }
-
-  async downloadTrack(): Promise<void> {
-    if (!this.lastTrackFileName) {
-      console.log('No track file saved yet.');
-      return;
-    }
-
-    try {
-      const result = await Filesystem.readFile({
-        path: this.lastTrackFileName,
-        directory: Directory.Documents,
-      });
-
-      const blob = new Blob([result.data], {
-        type: 'text/csv;charset=utf-8;',
-      });
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = this.lastTrackFileName;
-      a.click();
-
-      URL.revokeObjectURL(url);
-      console.log('Track downloaded:', this.lastTrackFileName);
-    } catch (error) {
-      console.error('Error downloading track file:', error);
+    } finally {
+      this.isUploading = false;
     }
   }
 }

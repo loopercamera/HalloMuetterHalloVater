@@ -13,7 +13,6 @@
     </ion-toolbar>
   </ion-header>
 
-
   <ion-button
     expand="block"
     fill="outline"
@@ -41,25 +40,14 @@
   <ion-button
     expand="block"
     fill="outline"
-    (click)="saveTrackToFile()"
+    (click)="uploadTrackToDb()"
+    [disabled]="trackPoints?.length === 0 || isUploading"
   >
-    Save Track to File
+    Upload Track to DB
   </ion-button>
-
-  <ion-button
-    expand="block"
-    fill="outline"
-    (click)="downloadTrack()"
-    [disabled]="!lastTrackFileName"
-  >
-    Download Track (Web)
-  </ion-button>
-
 
   <div
     id="mapId"
     style="width: 100%; height: 70%; position: fixed"
   ></div>
 </ion-content>
-
-
