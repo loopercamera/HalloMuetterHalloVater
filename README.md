@@ -69,7 +69,7 @@ Create new database `hallo_muetter_hallo_vater`
 ```sql
 CREATE EXTENSION postgis;
 ```
-
+add table for user positions
 
 ```sql
 CREATE TABLE user_positions (
@@ -78,26 +78,15 @@ CREATE TABLE user_positions (
   created_at TIMESTAMP DEFAULT now()
 );
 ```
-### Install server dependencies:
 
-```bash
-cd Server
-```
+add table for outgoing rayon
 
-```bash
-npm init -y
-```
 
-```bash
-npm install express pg cors body-parser dotenv
-```
-
-``` bash
-npm install --save-dev nodemon
-```
-
-Start server with:
-
-```bash
-node server.js
+```sql
+CREATE TABLE outgoing_rayon (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    geom GEOMETRY(MULTIPOLYGON, 4326),
+    created_at TIMESTAMP DEFAULT NOW()
+);
 ```
